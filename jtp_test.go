@@ -3,10 +3,13 @@ package JTP
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestJTP(t *testing.T) {
 	go S()
+	go C()
+	<-time.After(time.Second)
 	C()
 }
 

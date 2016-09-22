@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+type packet struct {
+	addr *net.UDPAddr
+	data []byte
+}
+
 type sender_segment struct {
 	id       uint32
 	data     []byte

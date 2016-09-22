@@ -115,8 +115,3 @@ func Log(format string, args ...interface{}) {
 	return
 	fmt.Printf(format+"\n", args...)
 }
-
-type packet struct {
-	addr *net.UDPAddr
-	data []byte
-}

@@ -89,7 +89,7 @@ func (r *Receiver) getSession(segment *Segment) *session {
 
 //>0掉包
 var debugIdx = 0
-var debugMissing = []int{0}
+var debugMissing = []int{0, 1}
 
 //reply first missing segment & max segment id
 func (r *Receiver) reply(segment *Segment) {
