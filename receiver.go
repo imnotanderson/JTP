@@ -6,36 +6,35 @@ import (
 )
 
 type Receiver struct {
-	pConn      *net.UDPConn
-	sessionMap map[string]*session
-	ch_session chan *session
+	pConn    *net.UDPConn
+	pSession *session
 }
 
 func NewReceiver() *Receiver {
-	return &Receiver{
-		sessionMap: make(map[string]*session),
-		ch_session: make(chan *session, 1024),
-	}
+	return &Receiver{}
 }
 func (r Receiver) log(str string, args ...interface{}) {
-	Log(str+"\n", args...)
+	Log("Receiver:"+str+"\n", args...)
 }
 
-func (r *Receiver) Listen(addr string) {
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+func (r *Receiver) Dial(str_raddr string) error {
+	raddr, err := net.ResolveUDPAddr("udp", str_raddr)
 	if CheckErr(err) {
-		return
+		return err
 	}
-	r.log("listen " + addr)
-	r.pConn, err = net.ListenUDP("udp", udpAddr)
+	udpConn, err := net.DialUDP("udp", nil, raddr)
 	if CheckErr(err) {
-		return
+		return err
 	}
+	r.pConn = udpConn
+	r.pSession = NewSession(*raddr)
 	go r.recv()
-}
-
-func (r *Receiver) Accept() *session {
-	return <-r.ch_session
+	data := r.getReplyData(0, 0)
+	_, err = r.pConn.Write(data)
+	if CheckErr(err) {
+		return err
+	}
+	return nil
 }
 
 func (r *Receiver) recv() {
@@ -47,14 +46,12 @@ func (r *Receiver) recv() {
 		if CheckErr(err) {
 			continue
 		}
-
 		//fixme:模拟掉包
 		debug := debugMissing[debugIdx%len(debugMissing)]
 		debugIdx++
 		if debug > 0 {
 			continue
 		}
-
 		if l < 4 {
 			continue
 		}
@@ -66,29 +63,28 @@ func (r *Receiver) recv() {
 		}
 		//get session
 		pSession := r.getSession(segment)
+		if pSession == nil {
+			continue
+		}
 		//check
 		if pSession.checkSement(segment) == false {
 			continue
 		}
-
 		r.appendSegment(segment)
 		r.reply(segment)
 	}
 }
 
 func (r *Receiver) getSession(segment *Segment) *session {
-	pSession := r.sessionMap[segment.addr.String()]
-	if pSession == nil {
-		pSession = NewSession(*segment.addr)
-		select {
-		case r.ch_session <- pSession:
-			r.sessionMap[segment.addr.String()] = pSession
-		default:
-			//s.log("ch_session full")
-			panic("ch_session full")
-		}
+
+	if r.pSession == nil {
+		r.pSession = NewSession(*segment.addr)
+		return r.pSession
 	}
-	return pSession
+	if r.pSession.raddr.String() != segment.addr.String() {
+		return nil
+	}
+	return r.pSession
 }
 
 //>0掉包
@@ -97,14 +93,21 @@ var debugMissing = []int{0}
 
 //reply first missing segment & max segment id
 func (r *Receiver) reply(segment *Segment) {
-	pSession := r.sessionMap[segment.addr.String()]
+	pSession := r.pSession
 	if pSession == nil {
 		Log("reply session nil")
 		return
 	}
 	data := r.getReplyData(pSession.nextId, pSession.maxId)
 	Log("s.sendReply nextId:%v maxId:%v", pSession.nextId, pSession.maxId)
-	r.pConn.WriteToUDP(data, &pSession.addr)
+	if pSession.raddr.String() != r.pConn.RemoteAddr().String() {
+		Log("pSession.raddr.String()!=r.pConn.RemoteAddr() return")
+		return
+	}
+	_, err := r.pConn.Write(data)
+	if CheckErr(err) {
+		panic(err)
+	}
 }
 
 func (r *Receiver) getReplyData(nextId uint32, maxId uint32) []byte {
@@ -118,17 +121,7 @@ func (r *Receiver) getReplyData(nextId uint32, maxId uint32) []byte {
 //sort append by segment.id  ,append continuous data 2 recv_buf
 func (r *Receiver) appendSegment(segment *Segment) {
 	r.log("append segment:%v", segment)
-	pSession := r.sessionMap[segment.addr.String()]
-	if pSession == nil {
-		pSession = NewSession(*segment.addr)
-		select {
-		case r.ch_session <- pSession:
-			r.sessionMap[segment.addr.String()] = pSession
-		default:
-			r.log("ch_session full")
-			return
-		}
-	}
+	pSession := r.pSession
 	pSession.appendAndSort(segment)
 	r.log("recv data :%v", pSession.recvBuff)
 	r.log("sort:%v", pSession.list)
@@ -140,4 +133,8 @@ func CheckErr(err error) bool {
 		return true
 	}
 	return false
+}
+
+func (r *Receiver) Read(p []byte) (l int, err error) {
+	return r.pSession.Read(p)
 }

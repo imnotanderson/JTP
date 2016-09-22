@@ -1,9 +1,11 @@
 package JTP
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type Segment struct {
@@ -17,7 +19,7 @@ func (s *Segment) String() string {
 }
 
 type session struct {
-	addr        net.UDPAddr
+	raddr       net.UDPAddr
 	list        []*Segment
 	nextId      uint32
 	maxId       uint32
@@ -27,9 +29,9 @@ type session struct {
 	die         chan struct{}
 }
 
-func NewSession(addr net.UDPAddr) *session {
+func NewSession(raddr net.UDPAddr) *session {
 	return &session{
-		addr:        addr,
+		raddr:       raddr,
 		list:        []*Segment{},
 		nextId:      0,
 		maxId:       0,
@@ -103,6 +105,8 @@ func (s *session) Read(p []byte) (n int, err error) {
 		s.mlock.Unlock()
 		select {
 		case <-s.ch_readSign:
+		case <-time.After(time.Second):
+			return 0, errors.New("timeout")
 		}
 	}
 }
@@ -110,4 +114,9 @@ func (s *session) Read(p []byte) (n int, err error) {
 func Log(format string, args ...interface{}) {
 	return
 	fmt.Printf(format+"\n", args...)
+}
+
+type packet struct {
+	addr *net.UDPAddr
+	data []byte
 }
