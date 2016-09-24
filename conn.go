@@ -8,29 +8,32 @@ import (
 )
 
 type JTPConn struct {
-	addr        *net.UDPAddr
-	id          uint32
-	list        []sender_segment
-	ch_send     chan []byte
-	ch_recv     chan reply
-	mtu         int
-	rto_min     time.Duration
-	rto_max     time.Duration
-	die         chan struct{}
-	ch_raw_send chan<- packet
+	addr           *net.UDPAddr
+	id             uint32
+	list           []sender_segment
+	ch_send        chan []byte
+	ch_recv        chan reply
+	mtu            int
+	rto_min        time.Duration
+	rto_max        time.Duration
+	die            chan struct{}
+	ch_raw_send    chan<- packet
+	maxResendCount int
+	resendCount    int
 }
 
 func buildJTPConn(addr *net.UDPAddr, ch_raw_send chan<- packet) *JTPConn {
 	conn := &JTPConn{
-		addr:        addr,
-		list:        []sender_segment{},
-		ch_send:     make(chan []byte, 1024),
-		ch_recv:     make(chan reply, 1024),
-		mtu:         2,
-		rto_min:     time.Millisecond * 1,
-		rto_max:     time.Millisecond * 2,
-		die:         make(chan struct{}),
-		ch_raw_send: ch_raw_send,
+		addr:           addr,
+		list:           []sender_segment{},
+		ch_send:        make(chan []byte, 1024),
+		ch_recv:        make(chan reply, 1024),
+		mtu:            2,
+		rto_min:        time.Millisecond * 1,
+		rto_max:        time.Millisecond * 2,
+		die:            make(chan struct{}),
+		ch_raw_send:    ch_raw_send,
+		maxResendCount: 10,
 	}
 	go conn.handleReply()
 	go conn.handleSend()
@@ -53,6 +56,7 @@ func (s *JTPConn) handleReply() {
 	for {
 		select {
 		case replyData := <-s.ch_recv:
+			s.resendCount = 0
 			for i := 0; i < len(s.list); i++ {
 				if s.list[i].id < replyData.nextId {
 					s.list = s.list[i+1:]
@@ -70,6 +74,11 @@ func (s *JTPConn) handleReply() {
 			if len(s.list) > 0 {
 				resendCount++
 				s.raw_send(s.list[0].getData())
+				//todo:max_resebdCount
+				s.resendCount++
+				if s.resendCount > s.maxResendCount {
+					close(s.die)
+				}
 			}
 		case <-s.die:
 			return

@@ -47,13 +47,15 @@ func (r *Receiver) recv() {
 			continue
 		}
 		//fixme:模拟掉包
-		debug := debugMissing[debugIdx%len(debugMissing)]
-		debugIdx++
-		if debug > 0 {
-			continue
-		}
-		if l < 4 {
-			continue
+		{
+			debug := debugMissing[debugIdx%len(debugMissing)]
+			debugIdx++
+			if debug > 0 {
+				continue
+			}
+			if l < 4 {
+				continue
+			}
 		}
 		id := binary.LittleEndian.Uint32(data)
 		segment := &Segment{
@@ -67,7 +69,7 @@ func (r *Receiver) recv() {
 			continue
 		}
 		//check
-		if pSession.checkSement(segment) == false {
+		if pSession.checkSegment(segment) == false {
 			continue
 		}
 		r.appendSegment(segment)

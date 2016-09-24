@@ -18,11 +18,12 @@ var allSendData []byte
 func S() {
 	allSendData = []byte{}
 	s := NewSender("127.0.0.1:12345")
-	for i := 0; i < 100; i++ {
-		data := []byte(fmt.Sprint(i))
-		allSendData = append(allSendData, data...)
-		s.Send(data)
-	}
+	//for i := 0; i < 100; i++ {
+	data := []byte(fmt.Sprint("hello world"))
+	<-time.After(time.Millisecond * 300)
+	allSendData = append(allSendData, data...)
+	s.Send(data)
+	//	}
 }
 
 func C() {

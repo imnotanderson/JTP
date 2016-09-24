@@ -19,30 +19,48 @@ func (s *Segment) String() string {
 }
 
 type session struct {
-	raddr       net.UDPAddr
-	list        []*Segment
-	nextId      uint32
-	maxId       uint32
-	recvBuff    []byte
-	mlock       *sync.RWMutex
-	ch_readSign chan struct{}
-	die         chan struct{}
+	raddr         net.UDPAddr
+	list          []*Segment
+	nextId        uint32
+	maxId         uint32
+	recvBuff      []byte
+	mlock         *sync.RWMutex
+	ch_readSign   chan struct{}
+	die           chan struct{}
+	ch_heart      chan struct{}
+	intervalHeart time.Duration
 }
 
 func NewSession(raddr net.UDPAddr) *session {
-	return &session{
-		raddr:       raddr,
-		list:        []*Segment{},
-		nextId:      0,
-		maxId:       0,
-		recvBuff:    []byte{},
-		mlock:       new(sync.RWMutex),
-		ch_readSign: make(chan struct{}, 1024),
-		die:         make(chan struct{}, 1024),
+	s := &session{
+		raddr:         raddr,
+		list:          []*Segment{},
+		nextId:        0,
+		maxId:         0,
+		recvBuff:      []byte{},
+		mlock:         new(sync.RWMutex),
+		ch_readSign:   make(chan struct{}, 1024),
+		die:           make(chan struct{}, 1024),
+		ch_heart:      make(chan struct{}, 1024),
+		intervalHeart: time.Second * 5,
+	}
+	go s.handleHeart()
+	return s
+}
+
+func (s *session) handleHeart() {
+	for {
+		select {
+		case <-s.ch_heart:
+		case <-time.After(s.intervalHeart):
+			close(s.die)
+			Log("session time out die")
+			return
+		}
 	}
 }
 
-func (pSession *session) checkSement(segment *Segment) (ok bool) {
+func (pSession *session) checkSegment(segment *Segment) (ok bool) {
 	if segment.id < pSession.nextId {
 		return false
 	}
@@ -90,6 +108,7 @@ func (pSession *session) appendAndSort(segment *Segment) {
 	}
 	if len(pSession.recvBuff) > 0 {
 		pSession.ch_readSign <- struct{}{}
+		pSession.ch_heart <- struct{}{}
 	}
 }
 
@@ -105,13 +124,13 @@ func (s *session) Read(p []byte) (n int, err error) {
 		s.mlock.Unlock()
 		select {
 		case <-s.ch_readSign:
-		case <-time.After(time.Second):
-			return 0, errors.New("timeout")
+		case <-s.die:
+			return 0, errors.New("session close")
 		}
 	}
 }
 
 func Log(format string, args ...interface{}) {
-	return
+	//return
 	fmt.Printf(format+"\n", args...)
 }
