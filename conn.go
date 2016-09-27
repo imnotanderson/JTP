@@ -2,7 +2,7 @@ package JTP
 
 import (
 	"encoding/binary"
-	"fmt"
+	//	"fmt"
 	"net"
 	"time"
 )
@@ -16,6 +16,8 @@ type JTPConn struct {
 	mtu            int
 	rto_min        time.Duration
 	rto_max        time.Duration
+	dieTime        time.Duration
+	isDie          bool
 	die            chan struct{}
 	ch_raw_send    chan<- packet
 	maxResendCount int
@@ -26,11 +28,12 @@ func buildJTPConn(addr *net.UDPAddr, ch_raw_send chan<- packet) *JTPConn {
 	conn := &JTPConn{
 		addr:           addr,
 		list:           []sender_segment{},
-		ch_send:        make(chan []byte, 1024),
+		ch_send:        make(chan []byte, 102400),
 		ch_recv:        make(chan reply, 1024),
 		mtu:            2,
 		rto_min:        time.Millisecond * 1,
 		rto_max:        time.Millisecond * 2,
+		dieTime:        time.Millisecond * 100,
 		die:            make(chan struct{}),
 		ch_raw_send:    ch_raw_send,
 		maxResendCount: 10,
@@ -63,7 +66,7 @@ func (s *JTPConn) handleReply() {
 					i--
 				} else {
 					if time.Now().Sub(s.list[i].sendTime) > s.rto_min {
-						Log("conn.resend:%v\n", s.list[i])
+						//Log("conn.resend:%v\n", s.list[i])
 						resendCount++
 						s.raw_send(s.list[i].getData())
 					}
@@ -74,23 +77,24 @@ func (s *JTPConn) handleReply() {
 			if len(s.list) > 0 {
 				resendCount++
 				s.raw_send(s.list[0].getData())
-				//todo:max_resebdCount
-				s.resendCount++
-				if s.resendCount > s.maxResendCount {
-					close(s.die)
-				}
 			}
+		case <-time.After(s.dieTime):
+			close(s.die)
 		case <-s.die:
 			return
 		}
 	}
 }
 
-func (conn *JTPConn) handleRecv(data []byte, ch_conn chan<- *JTPConn) {
+func (conn *JTPConn) handleRecv(data []byte) {
 	nextId, _, ok := conn.parseRecvData(data)
 	if ok {
-		Log("c.recv.nextId:%v\n", nextId)
-		conn.ch_recv <- reply{nextId: nextId}
+		//Log("c.recv.nextId:%v\n", nextId)
+		select {
+		case conn.ch_recv <- reply{nextId: nextId}:
+		case <-conn.die:
+			return
+		}
 	}
 	//todo:if recv close sgin close(die)
 }
@@ -107,9 +111,13 @@ func (c *JTPConn) parseRecvData(data []byte) (nextId uint32, max uint32, ok bool
 }
 
 func (c *JTPConn) Send(data []byte) {
-	Log("send:%v\n", data)
+	//Log("send:%v\n", data)
 	for _, v := range splitData(data, c.mtu) {
-		c.ch_send <- v
+		select {
+		case c.ch_send <- v:
+		case <-c.die:
+			return
+		}
 	}
 }
 
@@ -138,7 +146,7 @@ func (s *JTPConn) send(data []byte) {
 		data:     data,
 		sendTime: time.Now(),
 	}
-	Log("s.send:id:%v,data:%v", segment.id, segment.data)
+	//Log("s.send:id:%v,data:%v", segment.id, segment.data)
 	s.id++
 	s.list = append(s.list, segment)
 	s.raw_send(segment.getData())
@@ -149,9 +157,14 @@ var resendCount = 0
 
 func (s *JTPConn) raw_send(data []byte) {
 	sendCount += len(data)
-	fmt.Printf("sendCount:%v resendCount:%v\n", sendCount, resendCount)
-	s.ch_raw_send <- packet{
+	//	fmt.Printf("sendCount:%v resendCount:%v\n", sendCount, resendCount)
+	select {
+
+	case s.ch_raw_send <- packet{
 		addr: s.addr,
 		data: data,
+	}:
+	case <-s.die:
+		return
 	}
 }

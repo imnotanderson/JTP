@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -81,15 +82,12 @@ func (pSession *session) appendAndSort(segment *Segment) {
 			break
 		}
 	}
-	Log("insertIdx:%v", insertIdx)
-	Log("before:%v", pSession.list)
 	if insertIdx == len(pSession.list) {
 		pSession.list = append(pSession.list, segment)
 	} else {
 		pSession.list = append(pSession.list[:insertIdx+1], pSession.list[insertIdx:]...)
 		pSession.list[insertIdx] = segment
 	}
-	Log("after:%v", pSession.list)
 	if pSession.maxId < segment.id {
 		pSession.maxId = segment.id
 	}
@@ -131,6 +129,8 @@ func (s *session) Read(p []byte) (n int, err error) {
 }
 
 func Log(format string, args ...interface{}) {
-	//return
-	fmt.Printf(format+"\n", args...)
+	return
+	_, f, l, _ := runtime.Caller(1)
+	s := fmt.Sprintf("【%v:%v】\n", f, l)
+	fmt.Printf(s+format+"", args...)
 }

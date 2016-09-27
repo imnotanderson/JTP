@@ -36,7 +36,6 @@ type Sender struct {
 	mMapLock *sync.RWMutex
 	connMap  map[string]*JTPConn
 	pConn    *net.UDPConn
-	ch_conn  chan *JTPConn
 	ch_send  chan packet
 }
 
@@ -52,12 +51,13 @@ func NewSender(str_laddr string) *Sender {
 	pSender := &Sender{
 		pConn:    pConn,
 		connMap:  make(map[string]*JTPConn),
-		ch_conn:  make(chan *JTPConn, 1024),
 		ch_send:  make(chan packet, 1024),
 		mMapLock: new(sync.RWMutex),
 	}
-	go pSender.raw_recv()
-	go pSender.raw_send()
+	for i := 0; i < 1; i++ {
+		go pSender.raw_recv()
+		go pSender.raw_send()
+	}
 	return pSender
 }
 
@@ -80,15 +80,20 @@ func (s *Sender) raw_recv() {
 		s.mMapLock.RLock()
 		conn := s.connMap[addr.String()]
 		s.mMapLock.RUnlock()
-		if conn == nil {
-			conn = buildJTPConn(addr, s.ch_send)
-			s.mMapLock.Lock()
-			conn.send(s.allData)
-			s.connMap[addr.String()] = conn
-			Log("new conn join")
-			s.mMapLock.Unlock()
-		}
-		conn.handleRecv(data[:l], s.ch_conn)
+		go func() {
+			if conn == nil {
+				conn = buildJTPConn(addr, s.ch_send)
+				s.mMapLock.Lock()
+				s.connMap[addr.String()] = conn
+				Log("new conn join")
+				s.mMapLock.Unlock()
+				conn.Send(s.allData)
+			}
+			if conn.isDie {
+				return
+			}
+			conn.handleRecv(data[:l])
+		}()
 	}
 }
 
@@ -96,7 +101,7 @@ func (s *Sender) Send(data []byte) {
 	s.mMapLock.RLock()
 	s.allData = append(s.allData, data...)
 	for _, v := range s.connMap {
-		v.send(data)
+		v.Send(data)
 	}
 	s.mMapLock.RUnlock()
 }
