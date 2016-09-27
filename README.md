@@ -29,7 +29,7 @@ func RecvData(){
 C#
 ---
 ```csharp
-void RecvData{
+void RecvData(){
     var r = new Receiver();
     r.Dial("127.0.0.1", 45678);
     var data = r.Read();
