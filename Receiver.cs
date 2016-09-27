@@ -13,7 +13,7 @@ public class Receiver  {
     Socket socket;
     Session session;
     Thread thRecv = null;
-    int timeout = 5000;
+    int timeout = 30000;
 
     public int DataCount
     {
@@ -59,7 +59,7 @@ public class Receiver  {
             socket.SendTo(firstData, raddr);
             for (;;)
             {
-                var data = new byte[1024];
+                var data = new byte[10240];
                 EndPoint addr = this.raddr;
                 var n = socket.ReceiveFrom(data, ref addr);
                 var id = bytes2uint(data);
@@ -142,7 +142,7 @@ public class Receiver  {
             return;
         }
         var data = getReplyData(session.nextId, session.maxId);
-        Log.Info("s.sendReply nextId:{0} maxId:{1}", session.nextId, session.maxId);
+        //Log.Info("s.sendReply nextId:{0} maxId:{1}", session.nextId, session.maxId);
         if (session.raddr.ToString() != this.raddr.ToString())
         {
             Log.Info("pSession.raddr.String()!=r.pConn.RemoteAddr() return");
@@ -217,8 +217,8 @@ public class Session
                 break;
             }
         }
-        Log.Info("insertIdx:{0}", insertIdx);
-        Log.Info("before:{0}", list);
+        //Log.Info("insertIdx:{0}", insertIdx);
+        //Log.Info("before:{0}", list);
         if (insertIdx == list.Count)
         {
             list.Add(segment);
@@ -228,7 +228,7 @@ public class Session
             //check
             list.Insert(insertIdx, segment);
         }
-        Log.Info("after:{0}", list);
+        //Log.Info("after:{0}", list);
         if (maxId < segment.id)
         {
             maxId = segment.id;
@@ -297,8 +297,7 @@ public class Log
 {
     public static void Info(string format,params object[] args)
     {
-        return;
         Debug.Log(string.Format(format, args));
-        UnityEngine.MonoBehaviour.print(string.Format(format, args));
+       // UnityEngine.MonoBehaviour.print(string.Format(format, args));
     }
 }
